@@ -54,16 +54,20 @@ pipeline {
             }
         }
 
-        stage('Trivy Container Image Scan') {
+ stage('Trivy Container Image Scan') {
             steps {
                 echo "Scanning Docker image ${DOCKER_HUB_REPO}:${IMAGE_TAG} for container vulnerabilities..."
                 sh '''
                     docker run --rm \
                       -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v /var/lib/docker/volumes/jenkins_home/_data/trivy-cache:/root/.cache/ \
                       aquasec/trivy:latest \
-                      image --exit-code 0 --severity HIGH,CRITICAL \
-                      --no-progress \
+                      image \
                       --scanners vuln \
+                      --pkg-types os \
+                      --exit-code 0 \
+                      --severity HIGH,CRITICAL \
+                      --no-progress \
                       ${DOCKER_HUB_REPO}:${IMAGE_TAG}
                 '''
             }
