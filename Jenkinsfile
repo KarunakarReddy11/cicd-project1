@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_HUB_CRED_ID = 'dockerhub-credentials'
-        DOCKER_HUB_REPO    = 'karunakar11/devops-java-app'
+        DOCKER_HUB_REPO    = 'YOUR_DOCKERHUB_USERNAME/devops-java-app'
         IMAGE_TAG          = "${BUILD_NUMBER}"
     }
 
@@ -18,7 +18,6 @@ pipeline {
             steps {
                 checkout scm
                 sh 'git log -1 --pretty=format:"Commit: %h by %an on %cd | %s"'
-                // Verify pom.xml exists in the current Jenkins workspace
                 sh 'ls -la pom.xml'
             }
         }
@@ -26,7 +25,6 @@ pipeline {
         stage('Gitleaks Secret Scanning') {
             steps {
                 echo 'Checking for committed secrets...'
-                // Run secret scanner directly on files present in the workspace
                 sh '''
                     docker run --rm \
                       -v /var/lib/docker/volumes/jenkins_home/_data/workspace/${JOB_NAME}:/path \
@@ -39,7 +37,6 @@ pipeline {
         stage('Hadolint Dockerfile Linting') {
             steps {
                 echo 'Linting Dockerfile...'
-                // Pipe Dockerfile directly via stdin so no volume mounts are needed
                 sh 'docker run --rm -i hadolint/hadolint:latest < Dockerfile || true'
             }
         }
@@ -47,7 +44,6 @@ pipeline {
         stage('Docker Image Build & Unit Test') {
             steps {
                 echo "Building application container image: ${DOCKER_HUB_REPO}:${IMAGE_TAG}"
-                // The multi-stage Dockerfile handles compilation and packaging cleanly
                 sh '''
                     docker build -t ${DOCKER_HUB_REPO}:${IMAGE_TAG} -t ${DOCKER_HUB_REPO}:latest .
                 '''
@@ -60,10 +56,14 @@ pipeline {
                 sh '''
                     docker run --rm \
                       -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v /var/lib/docker/volumes/jenkins_home/_data/trivy-cache:/root/.cache/ \
                       aquasec/trivy:latest \
-                      image --exit-code 0 --severity HIGH,CRITICAL \
-                      --no-progress \
+                      image \
                       --scanners vuln \
+                      --pkg-types os \
+                      --exit-code 0 \
+                      --severity HIGH,CRITICAL \
+                      --no-progress \
                       ${DOCKER_HUB_REPO}:${IMAGE_TAG}
                 '''
             }
@@ -81,6 +81,19 @@ pipeline {
             }
         }
 
+        // ==========================================
+        // NEW STAGE: Trigger Ansible Deployment
+        // ==========================================
+        stage('Trigger Ansible Deployment') {
+            steps {
+                echo "Executing Ansible deployment for build #${IMAGE_TAG}..."
+                sh """
+                    docker exec ansible-controller ansible-playbook /etc/ansible/deploy.yml \
+                      --extra-vars "DOCKER_REPO=${DOCKER_HUB_REPO} BUILD_TAG=${IMAGE_TAG}"
+                """
+            }
+        }
+
         stage('Cleanup Local Docker Images') {
             steps {
                 sh '''
@@ -93,10 +106,10 @@ pipeline {
 
     post {
         success {
-            echo "CI pipeline completed successfully for Build #${BUILD_NUMBER}."
+            echo "CI/CD Pipeline succeeded: Application deployed to target server with tag ${IMAGE_TAG}."
         }
         failure {
-            echo "CI pipeline failed at Build #${BUILD_NUMBER}. Check console output."
+            echo "Pipeline failed during execution. Inspect build console output."
         }
     }
 }
