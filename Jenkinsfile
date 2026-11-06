@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_HUB_CRED_ID = 'dockerhub-credentials'
-        DOCKER_HUB_REPO    = 'YOUR_DOCKERHUB_USERNAME/devops-java-app'
+        DOCKER_HUB_REPO    = 'karunakar11/devops-java-app'
         IMAGE_TAG          = "${BUILD_NUMBER}"
     }
 
